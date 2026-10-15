@@ -5,6 +5,16 @@ import {studionet} from 'genlayer-js/chains';
 export const canonical=x=>x===null||typeof x!=='object'?JSON.stringify(x).replace(/[\u007f-\uffff]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0')):
  Array.isArray(x)?'['+x.map(canonical).join(',')+']':'{'+Object.keys(x).sort().map(k=>canonical(k)+':'+canonical(x[k])).join(',')+'}';
 export const digest=x=>crypto.createHash('sha256').update(canonical(x)).digest('hex');
+function execute(program,text){
+ const lower=text.toLowerCase(),words=new Set(lower.match(/[a-z]+/g)||[]),stack=[];
+ for(const token of program.split(',')){
+  if(['true','false'].includes(token))stack.push(token==='true');
+  else if(token.includes('.')){const [op,term]=token.split('.');stack.push(op==='has'?lower.includes(term):op==='word'?words.has(term):lower.startsWith(term));}
+  else if(token==='not')stack[stack.length-1]=!stack[stack.length-1];
+  else{const right=stack.pop(),left=stack.pop();stack.push(token==='and'?left&&right:left||right);}
+ }
+ return stack[0]?'ALLOW':'DENY';
+}
 export async function rpc(method,params){
  const r=await fetch('https://studio.genlayer.com/api',{method:'POST',headers:{'content-type':'application/json'},
   body:JSON.stringify({jsonrpc:'2.0',id:1,method,params}),signal:AbortSignal.timeout(20000)});
@@ -29,15 +39,36 @@ if(process.argv[1]?.endsWith('check.mjs'))try{
   const trials=[];
   for(const nonce of ['match-demo','unknown-demo','synth-demo']){
    const id=digest({contract:value,challenger:extra,nonce});let trial;
-   try{trial=await read('get_trial',[id]);}catch{trials.push({nonce,missing:true});continue;}
+   try{trial=await read('get_trial',[id]);}catch(e){
+    if(e.code!==-32000||e.details!=='execution failed')throw e;
+    trials.push({nonce,missing:true});continue;
+   }
    const {root,...body}=trial;
    if(digest(body)!==root||trial.report.binding.implementation!==key||trial.report.binding.spec_root!==item.spec_root)throw Error('Trial binding/root');
+   const report=trial.report,b=report.binding;
+   if(b.contract!==value||b.challenger!==extra||b.nonce!==nonce||b.trial_number!==trials.length
+      ||report.observed!==execute(item.spec.program,report.input)||!['ALLOW','DENY','UNKNOWN'].includes(report.semantic))throw Error('Execution/identity/ordinal mismatch');
+   const expected=report.semantic==='UNKNOWN'?'UNKNOWN':report.semantic===report.observed?'MATCH_ONLY':'COUNTEREXAMPLE';
+   if(trial.outcome!==expected)throw Error('Contradictory outcome');
    trials.push({nonce,id,...trial});
   }
   let guarded_disabled=false;
-  try{await read('classify_guarded',[key,item.spec_root,'There is a real fire here!']);}catch{guarded_disabled=true;}
+  try{await read('classify_guarded',[key,item.spec_root,'There is a real fire here!']);}catch(e){
+   if(e.code!==-32000||e.details!=='execution failed')throw e;
+   guarded_disabled=true;
+  }
   if((item.state==='FALSIFIED')!==guarded_disabled)throw Error('Guard mismatch');
+  if(trials.every(t=>!t.missing)){
+   const failed=trials.find(t=>t.outcome==='COUNTEREXAMPLE');
+   if(item.tests!==trials.length||item.failure_trial!==(failed?.id??'')||(item.state==='FALSIFIED')!==!!failed)throw Error('Terminal state mismatch');
+  }
   console.log(JSON.stringify({address:value,implementation_id:key,...item,trials,guarded_disabled}));
+ }else if(mode==='trial'){
+  const client=createClient({chain:studionet});
+  const trial=await client.readContract({address:value,functionName:'get_trial',args:[extra]});
+  const {root,...body}=trial;
+  if(digest(body)!==root)throw Error('Trial root mismatch');
+  console.log(JSON.stringify({id:extra,...trial}));
  }else if(['success','error'].includes(mode)){
   let tx=await rpc('eth_getTransactionByHash',[value]);
   for(let i=0;tx.status!=='FINALIZED'&&i<15;i++){await new Promise(r=>setTimeout(r,2000));tx=await rpc('eth_getTransactionByHash',[value]);}

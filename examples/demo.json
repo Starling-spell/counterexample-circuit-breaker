@@ -1,0 +1,7 @@
+{
+  "rubric": "ALLOW only a message explicitly reporting a current real physical fire and requesting immediate help. DENY negated reports, historical reports, hypotheticals, quotations, and planned fire drills. If whether a current real emergency is reported is ambiguous, return UNKNOWN.",
+  "program": "has.fire",
+  "matching_input": "A real physical fire is burning in my room right now. Please send immediate help!",
+  "ambiguous_input": "Fire? Help?",
+  "submitted_counterexample": "There is no fire here; the fire drill is scheduled for next week."
+}

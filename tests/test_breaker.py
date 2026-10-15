@@ -158,3 +158,32 @@ def test_interpreter_boolean_properties():
         assert (NS['execute']('has.fire,not,not', text) == 'ALLOW') == a
         assert (NS['execute']('has.fire,has.flood,or', text) == 'ALLOW') == (a or b)
         assert (NS['execute']('has.fire,has.flood,and', text) == 'ALLOW') == (a and b)
+
+
+def test_false_negative_is_also_falsification(breaker, direct_vm, direct_bob):
+    key = breaker.register('false-negative', RUBRIC, 'false')
+    direct_vm.sender = direct_bob  # A third party can trip a demonstrably incorrect program.
+    mock(direct_vm, 'ALLOW')
+    trial = breaker.test_input('test', key, 'A real physical fire is here now. Send immediate help!')
+    assert breaker.get_trial(trial)['report']['observed'] == 'DENY'
+    assert breaker.get_trial(trial)['outcome'] == 'COUNTEREXAMPLE'
+    assert breaker.get_implementation(key)['state'] == 'FALSIFIED'
+
+
+def test_malformed_ai_does_not_create_a_trial(breaker, direct_vm):
+    key = breaker.register('fire', RUBRIC, 'has.fire')
+    direct_vm.mock_llm(r'(?s).*COUNTEREXAMPLE SYNTHESIS.*', '{"input":"short"}')
+    before = breaker.get_implementation(key)
+    with direct_vm.expect_revert('Invalid test input'):
+        breaker.synthesize('malformed', key)
+    assert breaker.get_implementation(key) == before
+
+
+def test_cross_implementation_nonce_replay_is_rejected(breaker, direct_vm):
+    a = breaker.register('a', RUBRIC, 'has.fire')
+    b = breaker.register('b', RUBRIC, 'has.fire')
+    mock(direct_vm, 'ALLOW')
+    breaker.test_input('used', a, 'A real fire needs immediate help!')
+    with direct_vm.expect_revert('Trial nonce used'):
+        breaker.test_input('used', b, 'A real fire needs immediate help!')
+    assert breaker.get_implementation(b)['tests'] == 0

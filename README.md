@@ -56,4 +56,10 @@ genlayer deploy --contract contracts/CounterexampleCircuitBreaker.py
 
 Verify FINALIZED **and execution SUCCESS**, read the state, and compare Explorer source to this file. Direct tests run only the leader; callback tests execute the actual validator separately, not distributed consensus. Real network proof status is recorded in [LIVE_PROOFS.md](LIVE_PROOFS.md).
 
+The optional sanitized CLI wrapper requires `CIRCUIT_TEST_ACCOUNT` (an unlocked encrypted test keystore name) and `CIRCUIT_CLI_PATH` if the CLI entrypoint is not in the neighboring development workspace. It uses the built-in StudioNet preset, native OS-vault signing and one-shot broadcast transport. Raw validator debug/config output is suppressed. No key export or global account switch occurs. `scripts/demo.cjs` passes the public fixture arguments directly, avoiding shell JSON quoting hazards. Check receipts between writes; never blindly repeat an uncertain broadcast.
+
 See [architecture](docs/architecture.md), [threat model](SECURITY.md), and [proof matrix](docs/proof-matrix.md). No audit, production safety, correctness proof, or reviewer acceptance is claimed.
+
+## Live demonstration
+
+[StudioNet contract](https://explorer-studio.genlayer.com/address/0x15817b0cB312D60FB71042e3A8738647dED6F727). Deployed source matches the contract file. Real trials recorded MATCH_ONLY, UNKNOWN, then an AI-generated fire-drill counterexample that permanently tripped the classifier. Five successful finalized executions and two separately identified expected-error transactions are documented in [LIVE_PROOFS.md](LIVE_PROOFS.md).
